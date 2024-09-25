@@ -4,6 +4,7 @@ local Pos = require("nvim-treeclimber.pos")
 ---@field from treeclimber.Pos
 ---@field to treeclimber.Pos
 local Range = {}
+Range.__index = Range
 
 ---@param to treeclimber.Pos
 ---@param from treeclimber.Pos
@@ -19,12 +20,16 @@ function Range.new(from, to)
 	return range
 end
 
-function Range.__index(_, key)
-	return Range[key]
+function Range.new4(row1, col1, row2, col2)
+	return Range.new(Pos.new(row1, col1), Pos.new(row2, col2))
 end
 
-function Range.new4(row1, col1, row2, col2)
-	return Range.new(Pos:new(row1, col1), Pos:new(row2, col2))
+function Range:to_vim()
+	return Range.new(self.from:to_vim(), self.to:to_vim())
+end
+
+function Range:to_ts()
+	return Range.new(self.from:to_ts(), self.to:to_ts())
 end
 
 ---@param a treeclimber.Range
@@ -35,7 +40,7 @@ function Range.__eq(a, b)
 end
 
 function Range:__tostring()
-	return string.format("(%d, %d)", self.from, self.to)
+	return string.format("(%s, %s)", self.from, self.to)
 end
 
 ---@param a treeclimber.Range
@@ -50,7 +55,7 @@ end
 ---@param b treeclimber.Range
 ---@return boolean
 function Range.covers(a, b)
-	return Pos.lte(a[1], b[1]) and Pos.gte(a[2], b[2])
+	return Pos.lte(a.from, b.from) and Pos.gte(a.to, b.to)
 end
 
 ---@param range treeclimber.Range
