@@ -70,6 +70,15 @@ function visual.is_charwise()
 	return a.nvim_get_mode().mode == "v"
 end
 
+function visual.is_linewise()
+	return a.nvim_get_mode().mode == "V"
+end
+
+function visual.is_any()
+	local mode = a.nvim_get_mode().mode
+	return ({v = true, V = true, ["\22"] = true})[mode] or false
+end
+
 function visual.resume_charwise()
 	local visualmode = vim.fn.visualmode()
 
@@ -78,9 +87,11 @@ function visual.resume_charwise()
 	elseif ({ ["V"] = true, ["\22"] = true })[visualmode] then
 		-- 22 is the unicode decimal representation of <C-V>
 		vim.cmd.normal("gvv")
+  else
+		vim.cmd.normal("gv")
 	end
 
-	assert(vim.fn.mode() == "v", "Failed to resume visual mode")
+	assert(a.nvim_get_mode().mode:sub(1,1) == "v", "Failed to resume visual mode")
 end
 
 return visual

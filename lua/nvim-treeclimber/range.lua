@@ -11,8 +11,8 @@ Range.__index = Range
 ---@return treeclimber.Range
 function Range.new(from, to)
 	local range = {
-		from = from,
-		to = to,
+		from = from:copy(),
+		to = to:copy(),
 	}
 
 	setmetatable(range, Range)
@@ -100,6 +100,19 @@ end
 ---@return treeclimber.Range
 function Range.from_node(node)
 	return Range.new4(node:range())
+end
+
+function Range:delta()
+  return Pos.delta(self.from, self.to)
+end
+
+function Range:add_delta(delta)
+  if delta.lines == 0 then
+    self.to.col = self.to.col + delta.cols
+  else
+    self.to.row = self.to.row + delta.lines
+    self.to.col = delta.cols
+  end
 end
 
 return Range

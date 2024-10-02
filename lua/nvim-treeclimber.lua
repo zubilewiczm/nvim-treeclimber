@@ -47,6 +47,11 @@ function M.setup_keymaps()
 	vim.keymap.set({ "n", "x", "o" }, "<M-K>", tc.select_grow_backward, { desc = "Add the previous node to the selection" })
 	vim.keymap.set({ "n", "x", "o" }, "<M-L>", tc.select_visual_forward, { desc = "Enlarge the selection to the next node" })
 	vim.keymap.set({ "n", "x", "o" }, "<M-H>", tc.select_visual_backward, { desc = "Enlarge the selection to the previous node" })
+
+	vim.keymap.set({ "n", "x" }, "<M-m>", tc.cycle_clockwise, { desc = "cycle nodes in selection clockwise" })
+	vim.keymap.set({ "n", "x" }, "<M-n>", tc.cycle_counterclockwise, { desc = "cycle nodes in selection counterclockwise" })
+	vim.keymap.set({ "n", "x" }, "<M-M>", tc.cycle_clockwise, { desc = "cycle nodes in selection clockwise" })
+	vim.keymap.set({ "n", "x" }, "<M-N>", tc.cycle_counterclockwise, { desc = "cycle nodes in selection counterclockwise" })
 end
 
 function M.setup_user_commands()

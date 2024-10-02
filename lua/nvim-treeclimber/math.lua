@@ -7,7 +7,16 @@ local round = function(val)
   return math.floor(val + 0.5)
 end
 
+local mod = function(a,b)
+  local res = math.fmod(a,b)
+  if res < 0 then
+    res = res + math.abs(b)
+  end
+  return res
+end
+
 return {
   round = round,
-  clamp = clamp
+  clamp = clamp,
+  mod = mod
 }

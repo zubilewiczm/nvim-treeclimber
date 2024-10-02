@@ -16,6 +16,10 @@ function Pos.new(row, col)
 	return pos
 end
 
+function Pos:copy()
+  return Pos.new(self.row, self.col)
+end
+
 --- @param list integer[]
 --- @return treeclimber.Pos
 function Pos.from_list(list)
@@ -127,6 +131,13 @@ end
 --- @return integer, integer
 function Pos:values()
 	return self.row, self.col
+end
+
+function Pos:delta(other)
+  local lines = math.max(other.row - self.row, 0)
+  local cols = lines == 0 and
+    math.max(other.col - self.col, 0) or other.col
+  return { ["lines"] = lines, ["cols"] = cols }
 end
 
 return Pos

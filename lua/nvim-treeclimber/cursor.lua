@@ -24,7 +24,7 @@ function Cursor.copy(cur)
 	local data = {
 		current = cur.current,
 		anchor = cur.anchor,
-		range = {cur.range[1], cur.range[2]}
+		range = cur.range and {cur.range[1], cur.range[2]}
 	}
 
 	setmetatable(data, Cursor)
@@ -32,11 +32,16 @@ function Cursor.copy(cur)
 end
 
 function Cursor:__tostring()
-	return string.format('{ current = %s, anchor = %s, range = { %s, %s } }',
+  local range_string = "nil"
+  if self.range then
+    range_string = string.format("{ %s, %s }",
+      Range.from_node(self.range[1]),
+      Range.from_node(self.range[2]))
+  end
+	return string.format('{ current = %s, anchor = %s, range = %s }',
 		self.current and Range.from_node(self.current) or "nil",
 		self.anchor and self.anchor or "nil",
-		self.range and self.range[1] and Range.from_node(self.range[1]) or "nil",
-		self.range and self.range[2] and Range.from_node(self.range[2]) or "nil"
+    range_string
 	)
 end
 
@@ -89,14 +94,13 @@ function Cursor:first(allow_unnamed)
 end
 
 local function ns(self, au)
-	return au and self:next_sibling() or self:next_named_sibling()
+	return au and self and self:next_sibling() or self:next_named_sibling()
 end
 
 function Cursor:next(allow_unnamed)
 	if self.range then
 		local snode = self.range[1]
 		local enode = self.range[2]
-		local ns = allow_unnamed and snode.next_sibling or snode.next_named_sibling
 		local snode_n = ns(snode, allow_unnamed)
 
 		if snode_n then
@@ -120,7 +124,7 @@ function Cursor:next(allow_unnamed)
 end
 
 local function ps(self, au)
-	return au and self:prev_sibling() or self:prev_named_sibling()
+	return au and self and self:prev_sibling() or self:prev_named_sibling()
 end
 
 function Cursor:prev(allow_unnamed)
@@ -266,7 +270,7 @@ function Cursor:set_anchor_node(node)
 end
 
 function Cursor:get_selection_range()
-	if self.range then
+	if self.range and self.range[1] and self.range[2] then
 		from = Range.from_node(self.range[1]).from
 		to = Range.from_node(self.range[2]).to
 		return Range.new(from, to)
@@ -281,9 +285,7 @@ function Cursor:set_visual(visual)
 			self.range = {self.current, self.current}
 		end
 	else
-		if self.range then
-			self.range = nil
-		end
+    self.range = nil
 	end
 end
 

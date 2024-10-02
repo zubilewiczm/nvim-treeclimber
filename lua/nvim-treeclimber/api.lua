@@ -1,13 +1,14 @@
 local ts = vim.treesitter
 local f = vim.fn
 local a = vim.api
-local visual = require("nvim-treeclimber.visual")
+local math2 = require("nvim-treeclimber.math")
 local Cursor = require("nvim-treeclimber.cursor")
-local Pos = require("nvim-treeclimber.pos")
 local Range = require("nvim-treeclimber.range")
+local Pos = require("nvim-treeclimber.pos")
+local visual = require("nvim-treeclimber.visual")
 local RingBuffer = require("nvim-treeclimber.ring_buffer")
-local argcheck = require("nvim-treeclimber.typecheck").argcheck
 local history = require("nvim-treeclimber.history").new()
+local argcheck = require("nvim-treeclimber.typecheck").argcheck
 local log = require("nvim-treeclimber.log").log
 
 local api = {}
@@ -57,12 +58,6 @@ function api.buf.get_node_under_cursor()
 	local root = api.buf.get_root()
 	local row, col = api.buf.get_cursor()
 	return root:descendant_for_range(row, col, row, col)
-end
-
----@param node TSNode
----@return string
-function api.node.get_text(node)
-	return vim.treesitter.get_node_text(node, 0)
 end
 
 function api.show_control_flow()
@@ -160,6 +155,10 @@ function api.buf.get_selection_range_and_orientation()
 		from, to = to, from
 		orient = "@end"
 	end
+  if visual.is_linewise() then
+    from.col = 0
+    to.col = vim.fn.col({to.row+1, "$"})
+  end
 	from.col = from.col - 1
 	return { range = Range.new(from, to), orientation = orient }
 end
@@ -421,14 +420,14 @@ end
 ---		 If true, disregards the anchor and expands selection in chosen
 ---		 direction. (Original semantics.)
 local function select_node(opts)
-	local orientation_match = not (opts.orientation == "@end") or
+	local orientation_match = not (opts["orientation"] == "@end") or
 		api.buf.get_selection_orientation() == "@end"
 
 	local count = vim.v.count1
 
 	-- setup
 	local reset = reset_node_cursor()
-	if opts.visual then
+	if opts["visual"] then
 		if not cursor:is_visual() then
 			local nodes = get_covered_nodes(api.buf.get_selection_range(), cursor.anchor)
 			if nodes and #nodes > 0 then
@@ -445,8 +444,8 @@ local function select_node(opts)
 	end
 
 	-- select
-	if opts.ends then
-		if opts.direction == "@back" then
+	if opts["ends"] then
+		if opts["direction"] == "@back" then
 			cursor:first()
 		else
 			cursor:last(true)
@@ -455,15 +454,15 @@ local function select_node(opts)
 		if reset or not orientation_match then
 			count = math.max(count - 1, 0)
 		end
-		if opts.visual and opts.edges then
-			if opts.direction == "@back" then
+		if opts["visual"] and opts["edges"] then
+			if opts["direction"] == "@back" then
 				cursor:add_to_left(-count)
 			else
 				cursor:add_to_right(count)
 			end
 		else
-			local ct = opts.direction == "@back" and -count or count
-			cursor:add(opts.direction == "@back" and -count or count)
+			local ct = opts["direction"] == "@back" and -count or count
+			cursor:add(opts["direction"] == "@back" and -count or count)
 		end
 	end
 
@@ -474,7 +473,7 @@ local function select_node(opts)
 	-- highlight
 	history:change_top(cursor.current)
 	apply_decoration(cursor.current)
-	if opts.orientation == "@end" then
+	if opts["orientation"] == "@end" then
 		visual.select_end(cursor:get_selection_range())
 	else
 		visual.select(cursor:get_selection_range())
@@ -559,6 +558,162 @@ function api.select_grow_backward()
 		visual = true,
 		edges  = true
 	})
+end
+
+local function get_text_from_range(rng)
+  local lines = a.nvim_buf_get_text(0,
+    rng.from.row, rng.from.col, rng.to.row, rng.to.col, {})
+  return lines
+end
+
+local function cycle_nodes(nodes, amt)
+  local amt_mod = math2.mod(amt, #nodes) or 1
+  if amt_mod == 0 then
+    return
+  end
+
+  local function map(t, fun)
+    newt = {}
+    for k, v in ipairs(t) do
+      newt[k] = fun(v)
+    end
+    return newt
+  end
+
+  local function dbg_stp(t)
+    local r = ""
+    for i, l in ipairs(t) do
+      r = r .. "\n    " .. l
+    end
+    return r
+  end
+
+  local ranges = map(nodes, Range.from_node)
+  local texts  = map(ranges, get_text_from_range)
+  local sel = Range.new(ranges[#nodes].to, ranges[#nodes].to)
+
+  for idx = #nodes,1,-1 do
+    local tgt = math2.mod((idx-1) - amt, #nodes) + 1
+    local tail_delta = sel:delta()
+
+    a.nvim_buf_set_text(0,
+      ranges[idx].from.row, ranges[idx].from.col,
+      ranges[idx].to.row, ranges[idx].to.col,
+      texts[tgt]
+    )
+
+    sel = Range.new(ranges[idx].from, ranges[idx].from)
+    sel:add_delta(ranges[tgt]:delta()) 
+    if idx < #nodes then
+      sel:add_delta(Pos.delta(ranges[idx].to, ranges[idx+1].from))
+    end
+    sel:add_delta(tail_delta)
+  end
+
+  return sel
+end
+
+local function cycle_selected_nodes(nodes, amt)
+  local lr = "@right"
+  if cursor.current == cursor.range[1] then
+    lr = "@left"
+  end
+
+  local range = cycle_nodes(nodes, amt)
+
+  if range then
+    nodes = get_covered_nodes(range, cursor.anchor)
+    cursor:set_range(nodes[1], nodes[#nodes])
+    if lr == "@left" then
+      cursor.current = cursor.range[1]
+    else
+      cursor.current = cursor.range[2]
+    end
+  end
+  return range
+end
+
+local function cycle_siblings(node, amt)
+  local direction = amt < 0 and -1 or 1
+  local ccopy = Cursor.new(node)
+  ccopy:set_visual(true)
+  ccopy:set_anchor_node(node)
+  ccopy:add(amt)
+
+  local range = ccopy:get_selection_range()
+  local nodes = get_covered_nodes(range, ccopy.anchor)
+  amt = #nodes - 1
+
+  range = cycle_nodes(nodes, direction*amt)
+
+  if range then
+    nodes = get_covered_nodes(range, ccopy.anchor)
+    if direction < 0 then
+      cursor.current = nodes[1]
+    else
+      cursor.current = nodes[#nodes]
+    end
+  end
+  return range
+end
+
+local function cycle(opts)
+  local amt = opts["direction"] == "@back" and -vim.v.count1 or vim.v.count1
+  local reset = reset_node_cursor()
+  local range = api.buf.get_selection_range()
+  local nodes = get_covered_nodes(range, cursor.anchor)
+
+  if visual.is_any() then
+		if not cursor:is_visual() then
+      cursor:set_visual(true)
+      if nodes and #nodes > 0 then
+        cursor:set_range(nodes[1], nodes[#nodes])
+      end
+    end
+    if not cursor.anchor then
+      cursor:set_anchor(api.buf.get_selection_range())
+    end
+  else
+    cursor:set_visual(false)
+    cursor:unset_anchor()
+  end
+
+  local new_range = nil
+  if cursor:is_visual() then
+    range = cursor:get_selection_range()
+    nodes = get_covered_nodes(range, cursor.anchor)
+    if nodes then
+      if #nodes > 1 then
+        new_range = cycle_selected_nodes(nodes, amt)
+      elseif #nodes == 1 then
+        cursor:set_visual(false)
+        cursor:unset_anchor()
+        new_range = cycle_siblings(cursor.current, amt)
+      end
+    end
+  else
+    new_range = cycle_siblings(cursor.current, amt)
+  end
+
+  if cursor.current then
+    apply_decoration(cursor.current)
+    visual.select(cursor:get_selection_range())
+  else
+    visual.select(new_range)
+  end
+  visual.resume_charwise()
+end
+
+function api.cycle_clockwise()
+  cycle({
+    direction = "@fwd"
+  })
+end
+
+function api.cycle_counterclockwise()
+  cycle({
+    direction = "@back"
+  })
 end
 
 ---@param node TSNode
